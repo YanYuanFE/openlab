@@ -1,6 +1,7 @@
 import { ArrowLeft, Check, Hand, RotateCcw, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { saveDone } from '@/book/progress'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -23,6 +24,9 @@ export function Player<S>({ lesson }: { lesson: Lesson<S> }) {
   const finished = stepIdx >= lesson.steps.length
   const step = finished ? null : lesson.steps[stepIdx]
   const locked = finished || stepDone || anim !== null
+  useEffect(() => {
+    if (finished) saveDone(lesson.id)
+  }, [finished, lesson.id])
   const name = (id: string) => lesson.items[id] ?? id
 
   function onItem(id: string) {

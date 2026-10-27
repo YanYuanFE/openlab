@@ -1,15 +1,20 @@
+import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Link, Outlet, RouterProvider, ScrollRestoration, useParams } from 'react-router'
-import { BookView } from '@/book/BookView'
 import { Home } from '@/Home'
 import { Landing } from '@/landing/Landing'
 import { LESSONS } from '@/lessons'
-import { Player } from '@/Player'
+
+// the book and the player load on demand, so the landing page does not download them
+const BookView = lazy(() => import('@/book/BookView').then((m) => ({ default: m.BookView })))
+const Player = lazy(() => import('@/Player').then((m) => ({ default: m.Player })))
 
 function Root() {
   return (
     <>
       <ScrollRestoration />
-      <Outlet />
+      <Suspense fallback={<div className="h-dvh bg-background" />}>
+        <Outlet />
+      </Suspense>
     </>
   )
 }

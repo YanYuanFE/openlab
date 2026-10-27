@@ -16,7 +16,7 @@ globalThis.localStorage = {
 } as Storage
 const warnings: unknown[][] = []
 console.warn = (...a: unknown[]) => void warnings.push(a)
-const { loadStamps, saveStamp } = await import('./progress.ts')
+const { loadDone, loadStamps, saveDone, saveStamp } = await import('./progress.ts')
 const KEY = 'openlab-book-stamps'
 
 test('stamps saved are read back', () => {
@@ -45,4 +45,19 @@ test('blocked storage neither breaks reading nor saving', () => {
   // the failed read (repeated inside saving, not reported again) and the failed write
   assert.equal(warnings.length, 2)
   blocked = false
+})
+
+test('finished lessons are kept apart from stamps and read back by id', () => {
+  store.clear()
+  saveDone('titration')
+  saveStamp(3)
+  assert.deepEqual(Object.keys(loadDone()), ['titration'])
+  assert.deepEqual(Object.keys(loadStamps()), ['3'])
+})
+
+test('malformed lesson progress starts empty', () => {
+  for (const bad of ['{not json', '[1]', '{"iron":"yes"}']) {
+    store.set('openlab-lessons-done', bad)
+    assert.deepEqual(loadDone(), {}, bad)
+  }
 })

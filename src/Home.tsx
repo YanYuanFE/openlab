@@ -1,5 +1,6 @@
-import { TriangleAlert } from 'lucide-react'
+import { Check, TriangleAlert } from 'lucide-react'
 import { Link } from 'react-router'
+import { loadDone } from '@/book/progress'
 import { Brand } from '@/components/Logo'
 import { LESSONS } from '@/lessons'
 import type { Lesson } from '@/lessons/types'
@@ -41,6 +42,7 @@ export function Home() {
 }
 
 export function LessonGroups() {
+  const done = loadDone()
   return GROUPS.map((g) => (
     <section key={g.id} className="mt-12">
       <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
@@ -50,7 +52,7 @@ export function LessonGroups() {
       <p className="mt-1 text-sm text-ink-soft">{g.desc}</p>
       <div className="mt-6 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
         {LESSONS.filter((l) => l.group === g.id).map((l) => (
-          <LessonTile key={l.id} lesson={l} />
+          <LessonTile key={l.id} lesson={l} done={l.id in done} />
         ))}
       </div>
     </section>
@@ -58,7 +60,7 @@ export function LessonGroups() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function LessonTile({ lesson: l }: { lesson: Lesson<any> }) {
+function LessonTile({ lesson: l, done }: { lesson: Lesson<any>; done: boolean }) {
   return (
     <Link
       to={`/lessons/${l.id}`}
@@ -66,7 +68,14 @@ function LessonTile({ lesson: l }: { lesson: Lesson<any> }) {
     >
       <div className="flex items-start justify-between text-sm text-ink-soft tabular-nums">
         <l.icon className="size-5 text-bench" />
-        <span>{l.steps.length} 步</span>
+        {done ? (
+          <span className="flex items-center gap-1 font-semibold text-bench">
+            <Check className="size-4" aria-hidden />
+            已完成
+          </span>
+        ) : (
+          <span>{l.steps.length} 步</span>
+        )}
       </div>
       <p className="mt-4 text-4xl font-semibold tracking-tight text-bench">{FORMULA[l.id]}</p>
       <p className="mt-4 text-lg font-semibold text-ink group-hover:underline group-hover:decoration-bench/40 group-hover:underline-offset-4">{l.title}</p>
