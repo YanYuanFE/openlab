@@ -14,7 +14,7 @@ import { useChapter8 } from './ch8'
 import { useChapter9 } from './ch9'
 import { useChapter10 } from './ch10'
 import { CameraRig, Desk, DeskCamera, DeskLights, Leaf, OpenBook, pagePoint, TURN_SECONDS, type Framing } from './desk'
-import { PopUp } from './ink'
+import { FOLD_SECONDS, PopUp, REDUCED } from './ink'
 import { useBack, useFront } from './front'
 import { PAGE_W, usePage } from './paper'
 import { plain, type Block } from './print'
@@ -92,12 +92,17 @@ export function BookView() {
     const from = indexRef.current
     if (turning.current || i === from || i < 0 || i >= spreadsRef.current.length) return
     turning.current = true
-    setTurn({ from, to: i, start: performance.now() / 1000 })
+    // the leaf waits, lying flat, while the drawing on the page it will lift folds down
+    const fold = REDUCED ? 0 : FOLD_SECONDS
+    setTurn({ from, to: i, start: performance.now() / 1000 + fold })
     setIndex(i)
-    setTimeout(() => {
-      turning.current = false
-      setTurn(null)
-    }, TURN_SECONDS * 1000 + 60)
+    setTimeout(
+      () => {
+        turning.current = false
+        setTurn(null)
+      },
+      (fold + TURN_SECONDS) * 1000 + 60,
+    )
   }
   const nav: Nav = {
     toChapter: (c) => go(spreadsRef.current.findIndex((s) => s.chapter === c)),

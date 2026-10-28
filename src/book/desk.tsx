@@ -6,6 +6,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { rand } from '@/kit/core'
 import { Ink, REDUCED } from './ink'
 import { PAGE_D, PAGE_W, useCardTexture, type PrintedPage } from './paper'
+import { LEAF_N, POP } from './pop'
 import { hitAt } from './print'
 
 // The open book on the desk. World units are cm; the spine runs along z at x = 0, the reader sits at +z.
@@ -265,8 +266,10 @@ function LeafPaper({ map, reverse, side = THREE.FrontSide }: { map: THREE.Textur
  * The leaf being turned: a page pivoting about the spine from the right side (θ = 0) to the left (θ = π),
  * its free edge lagging so the paper curls. The front shows a right page, the back a left page.
  */
+const n = LEAF_N
+
 export function Leaf({ front, back, forward, start }: { front: PrintedPage; back: PrintedPage; forward: boolean; start: number }) {
-  const n = 40
+  const frame = useRef<THREE.Group>(null)
   const geo = useMemo(() => {
     const pos = new THREE.Float32BufferAttribute(new Float32Array((n + 1) * 2 * 3), 3)
     const make = (flip: boolean) => {
@@ -289,8 +292,9 @@ export function Leaf({ front, back, forward, start }: { front: PrintedPage; back
     return { pos, front: make(false), back: make(true) }
   }, [])
   useEffect(() => () => (geo.front.dispose(), geo.back.dispose()), [geo])
+  useEffect(() => () => void (POP.uLeafOn.value = 0), [])
   useFrame(() => {
-    const k = Math.min((performance.now() / 1000 - start) / TURN_SECONDS, 1)
+    const k = Math.min(Math.max((performance.now() / 1000 - start) / TURN_SECONDS, 0), 1)
     const e = k * k * (3 - 2 * k)
     const theta = Math.PI * (forward ? e : 1 - e)
     const lag = (forward ? -1 : 1) * 0.55 * Math.sin(Math.PI * e)
@@ -305,14 +309,20 @@ export function Leaf({ front, back, forward, start }: { front: PrintedPage; back
       }
       geo.pos.setXYZ(i * 2, x, y, -PAGE_D / 2)
       geo.pos.setXYZ(i * 2 + 1, x, y, PAGE_D / 2)
+      POP.uLeaf.value[i].set(x, y)
     }
+    // a forward turn carries the folded drawing of the page it lifts, until that face turns away (see leafWorld in pop.ts)
+    POP.uLeafOn.value = forward ? (theta < Math.PI / 2 ? 1 : 2) : 0
+    POP.uLeafStep.value = step
+    POP.uBook.value.copy(frame.current!.matrixWorld)
+    POP.uBookInv.value.copy(POP.uBook.value).invert()
     geo.pos.needsUpdate = true
     geo.front.computeVertexNormals()
     geo.back.computeVertexNormals()
     geo.front.computeBoundingSphere()
   })
   return (
-    <>
+    <group ref={frame}>
       {/* soft shading, not hatching: the leaf is mostly turned away from the light */}
       <mesh geometry={geo.front} castShadow>
         <LeafPaper map={front.tex} reverse={back.tex} />
@@ -320,7 +330,7 @@ export function Leaf({ front, back, forward, start }: { front: PrintedPage; back
       <mesh geometry={geo.back}>
         <LeafPaper map={back.tex} reverse={front.tex} side={THREE.BackSide} />
       </mesh>
-    </>
+    </group>
   )
 }
 

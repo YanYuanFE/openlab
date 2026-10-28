@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import * as THREE from 'three'
 import type { Vec3 } from '@/kit/core'
 import { penMaterial, ribbon, strokesFor } from './pen'
-import { POP, POP_DEPTH, popVertex } from './pop'
+import { leafVertex, POP, POP_DEPTH, popSurface, popVertex } from './pop'
 
 // Pen-and-ink rendering for the book: flat washes, world-space hatching for shade and cast shadows, and pen
 // strokes for outlines. Everything in a pop-up folds with it (see pop.ts). Units are centimetres, the page is y = 0.
@@ -43,7 +43,7 @@ const inkShade = (shader: THREE.WebGLProgramParametersWithUniforms) => {
 
 const inkPop = (s: THREE.WebGLProgramParametersWithUniforms) => {
   inkShade(s)
-  popVertex(s)
+  popSurface(s)
 }
 
 /** The hatched wash; `pop={false}` for surfaces that are not part of a pop-up drawing (the pages). */
@@ -53,17 +53,17 @@ export function Ink({ color, pop = true, ...rest }: { color: string; pop?: boole
 
 /** A flat-coloured material that folds with the pop-up (rings, printed labels, displays). */
 export function PopBasic(props: ThreeElements['meshBasicMaterial']) {
-  return <meshBasicMaterial onBeforeCompile={popVertex} customProgramCacheKey={() => 'basic-pop'} {...props} />
+  return <meshBasicMaterial onBeforeCompile={popSurface} customProgramCacheKey={() => 'basic-pop'} {...props} />
 }
 
 /** Glass drawn as ink only where the wall turns away from the eye, over a faint wash. */
 const glassShade = (shader: THREE.WebGLProgramParametersWithUniforms) => {
   popVertex(shader)
-  shader.fragmentShader = shader.fragmentShader.replace(
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSurf;').replace(
     '#include <opaque_fragment>',
     `float rim = 1.0 - abs(dot(normal, vec3(0.0, 0.0, 1.0)));
     float line = smoothstep(0.86, 0.98, rim);
-    gl_FragColor = vec4(mix(${glslVec3('#dfe8e6')}, ${glslVec3(INK)}, line), max(0.12, line * 0.9));`,
+    gl_FragColor = vec4(mix(${glslVec3('#dfe8e6')}, ${glslVec3(INK)}, line), max(0.12, line * 0.9) * uSurf);`,
   )
 }
 
@@ -119,8 +119,16 @@ export function Inked({ geometry, color, pen = 1.5, ...rest }: { geometry: THREE
   )
 }
 
-const LIFT_SECONDS = 1.6
-const FOLD_SECONDS = 0.45
+/** surfaces dissolve, then the drawing folds flat; the page turns only after this */
+export const FOLD_SECONDS = 0.5
+const DISSOLVE_SECONDS = 0.15
+/** a new drawing stands at once, the pen draws its lines, then its surfaces dissolve in over this span */
+const SURFACE_IN: [number, number] = [1.1, 1.7]
+
+const smooth = (a: number, b: number, x: number) => {
+  const t = Math.min(Math.max((x - a) / (b - a), 0), 1)
+  return t * t * (3 - 2 * t)
+}
 
 /** Front edge (largest z) of everything drawn in a pop-up, in its own frame; printed captions don't count. */
 function frontEdge(frame: THREE.Group) {
@@ -137,17 +145,16 @@ function frontEdge(frame: THREE.Group) {
 }
 
 /**
- * Holds the drawing standing on the page: drives the shared pop uniforms from its own frame, lifting the drawing
- * off the page when mounted (remount via `key` to lift again) and folding it flat when `folding` turns on.
- * It hinges about the front edge of what it holds.
+ * Holds the drawing standing on the page and drives the shared pop uniforms from its own frame. Mounted normally,
+ * the pen draws the drawing and its surfaces dissolve in (remount via `key` to draw again); mounted with
+ * `folding`, the finished drawing dissolves to its lines and folds flat about its front edge.
  */
 export function PopUp({ folding = false, children, ...rest }: { folding?: boolean; children: ReactNode } & GroupProps) {
   const ref = useRef<THREE.Group>(null)
-  const lift = useRef(REDUCED ? 1 : 0)
   const born = useRef<number | null>(null)
   const hinge = useRef(0)
   const { gl } = useThree()
-  useFrame(({ clock }, dt) => {
+  useFrame(({ clock }) => {
     const g = ref.current
     if (!g) return
     g.updateMatrixWorld()
@@ -160,10 +167,15 @@ export function PopUp({ folding = false, children, ...rest }: { folding?: boolea
     POP.uHinge.value = hinge.current
     gl.getDrawingBufferSize(POP.uRes.value)
     POP.uDpr.value = gl.getPixelRatio()
-    lift.current = REDUCED ? (folding ? 0 : 1) : folding ? Math.max(lift.current - dt / FOLD_SECONDS, 0) : Math.min(lift.current + dt / LIFT_SECONDS, 1)
-    POP.uLift.value = lift.current
-    POP.uDraw.value = REDUCED ? 1e6 : clock.elapsedTime - born.current
-    POP_DEPTH.opacity = lift.current
+    const age = clock.elapsedTime - born.current
+    const [lift, surf] = REDUCED
+      ? [folding ? 0 : 1, folding ? 0 : 1]
+      : folding
+        ? [1 - smooth(DISSOLVE_SECONDS, FOLD_SECONDS, age), 1 - smooth(0, DISSOLVE_SECONDS, age)]
+        : [1, smooth(...SURFACE_IN, age)]
+    POP.uLift.value = lift
+    POP.uSurf.value = surf
+    POP.uDraw.value = REDUCED || folding ? 1e6 : age
   })
   return (
     <group ref={ref} {...rest}>
@@ -230,7 +242,7 @@ export function Label({ position, text, formula = '', color = INK, bold = false 
     <mesh position={[position[0], position[1] + 0.02, position[2]]} rotation-x={-Math.PI / 2} userData={{ print: true }}>
       <planeGeometry args={[h * aspect, h]} />
       {/* print, so it does not fold with the drawing; pulled towards the camera so it never fights the page */}
-      <meshBasicMaterial map={tex} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} onBeforeCompile={leafVertex} customProgramCacheKey={() => 'label-leaf'} />
     </mesh>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { rand } from '@/kit/core'
 import { typeset, type Block, type Font, type Laid, type Measure, type Op, type Rect, type Tone } from './print'
@@ -206,7 +206,8 @@ export function usePage(spec: PageSpec): PrintedPage {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  useEffect(() => {
+  // painted before the frame that shows it, so a page never flashes its previous print (e.g. when a turn ends)
+  useLayoutEffect(() => {
     const g = canvas.getContext('2d')!
     fibre(g, canvas.width, canvas.height)
     g.textBaseline = 'alphabetic'
