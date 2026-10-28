@@ -29,12 +29,14 @@ export const POP = {
   uLeafOn: { value: 0 },
   uLeaf: { value: Array.from({ length: LEAF_N + 1 }, () => new THREE.Vector2()) },
   uLeafStep: { value: 1 },
+  /** height of the leaf over the middle of a page: a drawing's height above the leaf is measured from it */
+  uLeafBase: { value: 0 },
   uBook: { value: new THREE.Matrix4() },
   uBookInv: { value: new THREE.Matrix4() },
 }
 
 export const LEAF_GLSL = /* glsl */ `
-uniform float uLeafOn; uniform vec2 uLeaf[${LEAF_N + 1}]; uniform float uLeafStep; uniform mat4 uBook; uniform mat4 uBookInv;
+uniform float uLeafOn; uniform vec2 uLeaf[${LEAF_N + 1}]; uniform float uLeafStep; uniform float uLeafBase; uniform mat4 uBook; uniform mat4 uBookInv;
 // moves a point lying on the right page onto the turning leaf, just above its front face
 vec3 leafWorld(vec3 w) {
   if (uLeafOn < 0.5) return w;
@@ -44,7 +46,7 @@ vec3 leafWorld(vec3 w) {
   int i = int(f);
   vec2 a = uLeaf[i], c = uLeaf[i + 1];
   vec2 t = normalize(c - a);
-  vec2 q = mix(a, c, fract(f)) + vec2(-t.y, t.x) * max(b.y - uLeaf[0].y, 0.015);
+  vec2 q = mix(a, c, fract(f)) + vec2(-t.y, t.x) * max(b.y - uLeafBase, 0.015);
   return (uBook * vec4(q, b.z, 1.0)).xyz;
 }`
 

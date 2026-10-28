@@ -267,6 +267,12 @@ function LeafPaper({ map, reverse, side = THREE.FrontSide }: { map: THREE.Textur
  * its free edge lagging so the paper curls. The front shows a right page, the back a left page.
  */
 const n = LEAF_N
+/** height of a leaf lying flat over the middle of a page */
+const LEAF_BASE = PAGE_TOP + 0.04
+const smooth01 = (t: number) => {
+  const c = Math.min(Math.max(t, 0), 1)
+  return c * c * (3 - 2 * c)
+}
 
 export function Leaf({ front, back, forward, start }: { front: PrintedPage; back: PrintedPage; forward: boolean; start: number }) {
   const frame = useRef<THREE.Group>(null)
@@ -299,18 +305,28 @@ export function Leaf({ front, back, forward, start }: { front: PrintedPage; back
     const theta = Math.PI * (forward ? e : 1 - e)
     const lag = (forward ? -1 : 1) * 0.55 * Math.sin(Math.PI * e)
     let x = 0
-    let y = PAGE_TOP + 0.04
+    let y = LEAF_BASE
     const step = PAGE_W / n
+    // the leaf starts and ends lying on the page it leaves and lands on, bent into the gutter like that page,
+    // and blends into the free turning curve as it lifts
+    const [from, to] = forward ? [1, -1] : [-1, 1]
+    const lift = smooth01(e / 0.25)
+    const land = smooth01((e - 0.75) / 0.25)
     for (let i = 0; i <= n; i++) {
       if (i > 0) {
         const phi = theta + lag * ((i - 0.5) / n) ** 1.5
         x += Math.cos(phi) * step
         y += Math.sin(phi) * step
       }
-      geo.pos.setXYZ(i * 2, x, y, -PAGE_D / 2)
-      geo.pos.setXYZ(i * 2 + 1, x, y, PAGE_D / 2)
-      POP.uLeaf.value[i].set(x, y)
+      const u = i / n
+      const restY = surface(u) + 0.04
+      const lx = THREE.MathUtils.lerp(THREE.MathUtils.lerp(from * u * PAGE_W, x, lift), to * u * PAGE_W, land)
+      const ly = THREE.MathUtils.lerp(THREE.MathUtils.lerp(restY, y, lift), restY, land)
+      geo.pos.setXYZ(i * 2, lx, ly, -PAGE_D / 2)
+      geo.pos.setXYZ(i * 2 + 1, lx, ly, PAGE_D / 2)
+      POP.uLeaf.value[i].set(lx, ly)
     }
+    POP.uLeafBase.value = LEAF_BASE
     // a forward turn carries the folded drawing of the page it lifts, until that face turns away (see leafWorld in pop.ts)
     POP.uLeafOn.value = forward ? (theta < Math.PI / 2 ? 1 : 2) : 0
     POP.uLeafStep.value = step
@@ -336,11 +352,32 @@ export function Leaf({ front, back, forward, start }: { front: PrintedPage; back
 
 export type Framing = 'spread' | 'left' | 'right'
 
-/** Eases the camera to frame the spread or one page whenever `framing` changes; between moves the reader can orbit. */
-export function CameraRig({ framing, bottom }: { framing: Framing; bottom: number }) {
+/** how long the close-up on a drawing holds when the reader first arrives at one */
+const HERO_SECONDS = 4
+
+/**
+ * Eases the camera to frame the spread or one page whenever `framing` changes; between moves the reader can orbit.
+ * The first time a drawing (`hero`, world point at its foot) is on the page, the camera starts low and close on it
+ * while it is drawn, then pulls back to the spread, unless the reader takes the camera first.
+ */
+export function CameraRig({ framing, bottom, hero }: { framing: Framing; bottom: number; hero: THREE.Vector3 | null }) {
   const { size, camera } = useThree()
   const controls = useRef<OrbitControlsImpl>(null)
   const [moving, setMoving] = useState(true)
+  const heroUntil = useRef(0)
+  const heroSeen = useRef(false)
+  const heroGoal = useMemo(() => {
+    if (!hero) return null
+    const target = hero.clone().add(new THREE.Vector3(0, 1, 1))
+    const dir = new THREE.Vector3(0.3, 0.62, 1).normalize()
+    return { target, pos: target.clone().add(dir.multiplyScalar(30)) }
+  }, [hero])
+  useEffect(() => {
+    if (!heroGoal || heroSeen.current || REDUCED || framing !== 'spread' || size.width < size.height) return
+    heroSeen.current = true
+    heroUntil.current = performance.now() + HERO_SECONDS * 1000
+    setMoving(true)
+  }, [heroGoal, framing, size])
   const goal = useMemo(() => {
     const cam = camera as THREE.PerspectiveCamera
     const w = framing === 'spread' ? PAGE_W * 2 + 3 : PAGE_W + 1.5
@@ -365,11 +402,13 @@ export function CameraRig({ framing, bottom }: { framing: Framing; bottom: numbe
   useFrame((_, dt) => {
     const c = controls.current
     if (!moving || !c) return
-    const k = REDUCED ? 1 : 1 - Math.exp(-4 * dt)
-    camera.position.lerp(goal.pos, k)
-    c.target.lerp(goal.target, k)
+    const close = heroGoal && performance.now() < heroUntil.current
+    const g = close ? heroGoal : goal
+    const k = REDUCED ? 1 : 1 - Math.exp(-(close ? 2 : 4) * dt)
+    camera.position.lerp(g.pos, k)
+    c.target.lerp(g.target, k)
     c.update()
-    if (camera.position.distanceTo(goal.pos) < 0.05) setMoving(false)
+    if (!close && camera.position.distanceTo(g.pos) < 0.05) setMoving(false)
   })
   return (
     <OrbitControls
@@ -383,7 +422,10 @@ export function CameraRig({ framing, bottom }: { framing: Framing; bottom: numbe
       maxAzimuthAngle={0.7}
       minDistance={18}
       maxDistance={140}
-      onStart={() => setMoving(false)}
+      onStart={() => {
+        heroUntil.current = 0
+        setMoving(false)
+      }}
     />
   )
 }

@@ -50,7 +50,7 @@ function Scene({ spreads, index, turn, framing }: { spreads: SpreadDef[]; index:
   return (
     <>
       <DeskCamera />
-      <CameraRig framing={framing} bottom={BAR} />
+      <CameraRig framing={framing} bottom={BAR} hero={!turn && to.popup ? POPUP_AT : null} />
       <DeskLights />
       <Desk />
       <OpenBook left={left} right={right} keys={[`${l.key}-left`, `${r.key}-right`]} onHit={turn ? noop : to.onHit}>
