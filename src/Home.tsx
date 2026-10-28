@@ -74,7 +74,9 @@ function LessonTile({ lesson: l, done }: { lesson: Lesson<any>; done: boolean })
             已完成
           </span>
         ) : (
-          <span>{l.steps.length} 步</span>
+          <span>
+            <span className="font-mono">{l.steps.length}</span> 步
+          </span>
         )}
       </div>
       <p className="mt-4 text-4xl font-semibold tracking-tight text-bench">{FORMULA[l.id]}</p>

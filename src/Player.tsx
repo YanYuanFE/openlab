@@ -205,7 +205,7 @@ export function Player<S>({ lesson }: { lesson: Lesson<S> }) {
         ) : (
           <Card className="max-h-[60dvh] overflow-y-auto bg-card/95 backdrop-blur">
             <CardContent className="space-y-3">
-              <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
+              <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
                 <span className="shrink-0">
                   第 {stepIdx + 1} / {lesson.steps.length} 步
                 </span>
